@@ -2,9 +2,8 @@ import streamlit as st
 import os
 import json
 import time
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+from supabase import create_client, Client
 from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings, ChatNVIDIA
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -15,62 +14,68 @@ from langchain_community.vectorstores import FAISS
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 
-# --------------------------------------
+# ---------------------------------------------------------
 # CONFIGURAÇÕES INICIAIS
-# --------------------------------------
+# ---------------------------------------------------------
 load_dotenv()
 
+# 🔐 Chaves de API
 try:
     nvidia_api_key = st.secrets["NVIDIA_API_KEY"]
+    supabase_url = st.secrets["SUPABASE_URL"]
+    supabase_key = st.secrets["SUPABASE_KEY"]
 except:
     nvidia_api_key = os.getenv("NVIDIA_API_KEY")
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
 
-if nvidia_api_key:
-    os.environ['NVIDIA_API_KEY'] = nvidia_api_key
-else:
-    st.error("⚠️ NVIDIA_API_KEY não encontrada.")
+if not nvidia_api_key:
+    st.error("⚠️ NVIDIA_API_KEY não encontrada. Configure nos Secrets do Streamlit.")
     st.stop()
 
-# --------------------------------------
-# BANCO DE DADOS
-# --------------------------------------
-def get_db_connection():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        port=os.getenv("DB_PORT", 5432),
-        cursor_factory=RealDictCursor
-    )
+if not supabase_url or not supabase_key:
+    st.error("⚠️ SUPABASE_URL e SUPABASE_KEY não configuradas.")
+    st.stop()
 
-def carregar_historico_db(usuario_id):
-    """Carrega histórico JSON de um usuário específico do banco."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT historico_chat FROM viajantes WHERE id = %s", (usuario_id,))
-    result = cur.fetchone()
-    cur.close()
-    conn.close()
-    if result and result["historico_chat"]:
-        return result["historico_chat"]
-    return []
+os.environ["NVIDIA_API_KEY"] = nvidia_api_key
 
-def salvar_historico_db(usuario_id, historico):
-    """Atualiza o histórico JSON no banco de dados."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE viajantes SET historico_chat = %s WHERE id = %s",
-        (json.dumps(historico, ensure_ascii=False), usuario_id)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
+# ---------------------------------------------------------
+# CLIENTE SUPABASE
+# ---------------------------------------------------------
+supabase: Client = create_client(supabase_url, supabase_key)
 
-# --------------------------------------
+# ---------------------------------------------------------
+# FUNÇÕES DE BANCO (SUPABASE)
+# ---------------------------------------------------------
+def carregar_historico_db(usuario_id: int):
+    """Carrega o histórico de chat de um usuário no Supabase."""
+    try:
+        response = (
+            supabase.table("viajantes")
+            .select("historico_chat")
+            .eq("id", usuario_id)
+            .execute()
+        )
+        data = response.data
+        if data and data[0].get("historico_chat"):
+            return data[0]["historico_chat"]
+        return []
+    except Exception as e:
+        st.warning(f"Erro ao carregar histórico: {e}")
+        return []
+
+def salvar_historico_db(usuario_id: int, historico: list):
+    """Atualiza o histórico de chat do usuário no Supabase."""
+    try:
+        supabase.table("viajantes").update({
+            "historico_chat": historico
+        }).eq("id", usuario_id).execute()
+    except Exception as e:
+        st.warning(f"Erro ao salvar histórico: {e}")
+
+# ---------------------------------------------------------
 # INICIALIZAR MEMÓRIA POR USUÁRIO
-# --------------------------------------
+# ---------------------------------------------------------
 def load_memory(usuario_id):
     if "memory" not in st.session_state:
         memory = ConversationBufferMemory(return_messages=True)
@@ -81,20 +86,20 @@ def load_memory(usuario_id):
         st.session_state.memory = memory
 
 def save_memory(usuario_id):
-    """Salva o histórico atual no banco."""
+    """Salva o histórico atual no Supabase."""
     messages = st.session_state.memory.chat_memory.messages
     historico = []
     for i in range(0, len(messages), 2):
         if i + 1 < len(messages):
             historico.append({
                 "user": messages[i].content,
-                "ai": messages[i+1].content
+                "ai": messages[i + 1].content
             })
     salvar_historico_db(usuario_id, historico)
 
-# --------------------------------------
+# ---------------------------------------------------------
 # CARREGAR DOCUMENTOS PDF/TXT
-# --------------------------------------
+# ---------------------------------------------------------
 def carregar_docs(pasta="docs"):
     documentos = []
     for arquivo in os.listdir(pasta):
@@ -105,9 +110,9 @@ def carregar_docs(pasta="docs"):
             documentos.extend(TextLoader(caminho, encoding="utf-8").load())
     return documentos
 
-# --------------------------------------
+# ---------------------------------------------------------
 # CRIAR EMBEDDINGS E FAISS
-# --------------------------------------
+# ---------------------------------------------------------
 def vector_embedding():
     if not st.session_state.get("vectors"):
         st.session_state.embeddings = NVIDIAEmbeddings()
@@ -123,12 +128,12 @@ def vector_embedding():
         else:
             st.warning("⚠ Nenhum documento válido encontrado em ./docs")
 
-# --------------------------------------
+# ---------------------------------------------------------
 # INTERFACE STREAMLIT
-# --------------------------------------
-st.title("🤖 Nvidia NIM Chat por Usuário (com histórico no BD)")
+# ---------------------------------------------------------
+st.title("🤖 Chat IA Personalizado (Histórico via Supabase)")
 
-usuario_id = st.text_input("ID do usuário (viajantes.id):", value="1")
+usuario_id = st.text_input("🧑‍💻 ID do usuário (viajantes.id):", value="1")
 
 if not usuario_id.isdigit():
     st.warning("Insira um ID de usuário válido (número).")
@@ -137,6 +142,7 @@ if not usuario_id.isdigit():
 usuario_id = int(usuario_id)
 llm = ChatNVIDIA(model="meta/llama-3.1-405b-instruct")
 
+# Carregar memória do Supabase
 load_memory(usuario_id)
 
 prompt = ChatPromptTemplate.from_template("""
@@ -182,5 +188,5 @@ if user_input:
 # Exibir histórico
 with st.expander("📝 Histórico de conversa do usuário"):
     for msg in st.session_state.memory.chat_memory.messages:
-        role = "👤 Usuário" if msg.type == "human" else "Assistente"
+        role = "👤 Usuário" if msg.type == "human" else "🤖 Assistente"
         st.write(f"**{role}:** {msg.content}")
