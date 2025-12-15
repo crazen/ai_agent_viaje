@@ -135,7 +135,10 @@ for m in st.session_state.messages:
 if "vectors" not in st.session_state:
     docs = carregar_docs("./docs")
     if docs:
-        splitter = RecursiveCharacterTextSplitter(400, 50)
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=400,
+            chunk_overlap=50
+        )
         chunks = splitter.split_documents(docs)
         st.session_state.vectors = FAISS.from_documents(
             chunks,
@@ -169,3 +172,4 @@ if user_input := st.chat_input("Digite sua pergunta..."):
 
     with st.chat_message("assistant"):
         st.markdown(answer)
+
