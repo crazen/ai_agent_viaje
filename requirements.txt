@@ -1,9 +1,18 @@
-streamlit
-langchain
-langchain-nvidia-ai-endpoints
-langchain-community
-python-dotenv
-faiss-cpu
-pypdf
-supabase
-openai
+streamlit==1.32.0
+python-dotenv==1.0.1
+supabase==2.3.4
+openai==1.12.0
+
+# LangChain Core
+langchain==0.1.9
+langchain-core==0.1.27
+langchain-community==0.0.24
+langchain-nvidia-ai-endpoints==0.0.11
+
+# Document Processing
+pypdf==4.0.2
+faiss-cpu==1.8.0
+
+# Embeddings & Vector Store
+numpy==1.26.4
+tiktoken==0.6.0
