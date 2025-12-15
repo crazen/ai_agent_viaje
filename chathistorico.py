@@ -6,7 +6,7 @@ from supabase import create_client, Client
 from openai import OpenAI
 from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains import create_retrieval_chain
@@ -268,3 +268,4 @@ if user_input := st.chat_input("Digite sua pergunta..."):
             with st.chat_message("assistant"):
                 st.markdown(answer)
                 st.caption(f"⏱ Tempo de resposta: {time.process_time() - start:.2f} segundos")
+
