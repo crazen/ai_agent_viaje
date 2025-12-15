@@ -157,7 +157,7 @@ if user_input := st.chat_input("Digite sua pergunta..."):
 
     with st.spinner("🤖 Pensando..."):
         if st.session_state.vectors:
-            docs = st.session_state.vectors.as_retriever().get_relevant_documents(user_input)
+            docs = st.session_state.vectors.as_retriever().invoke(user_input)
             context = "\n\n".join(d.page_content for d in docs)
             prompt = f"Contexto:\n{context}\n\nPergunta: {user_input}"
         else:
@@ -172,4 +172,5 @@ if user_input := st.chat_input("Digite sua pergunta..."):
 
     with st.chat_message("assistant"):
         st.markdown(answer)
+
 
