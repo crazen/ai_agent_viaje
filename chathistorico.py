@@ -1,23 +1,18 @@
-# chatbot_usuarios_deepseek.py
 import streamlit as st
 import os, json, time
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from openai import OpenAI
+from pathlib import Path
+
 from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains import create_retrieval_chain
 from langchain_community.vectorstores import FAISS
 from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
-from pathlib import Path
+from langchain_core.prompts import ChatPromptTemplate
 
-# -----------------------------
-# CONFIGURAÇÕES INICIAIS
-# -----------------------------
+
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -35,20 +30,15 @@ if not NVIDIA_API_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-
-# Cliente LLM NVIDIA (OpenAI-compatible)
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
     api_key=NVIDIA_API_KEY
 )
 
-# -----------------------------
-# FUNÇÕES SUPABASE E USUÁRIO
-# -----------------------------
+
 def get_current_user():
     params = st.query_params
     user_id = params.get("user_id", None)
-#    user_name = params.get("user_username", None)
     token = params.get("access_token", None)
     return user_id, token
 
@@ -77,7 +67,7 @@ def load_user_history(user_id: str):
             return data[0]["historico_chat"]
     except Exception as e:
         st.warning(f"Erro ao buscar histórico no Supabase: {e}")
-    # fallback local
+
     p = user_storage_dir(user_id) / "chat_history.json"
     if p.exists():
         return json.loads(p.read_text(encoding="utf-8"))
@@ -96,7 +86,10 @@ def save_user_history(user_id: str, messages):
         st.warning(f"Erro ao salvar histórico no Supabase: {e}")
 
     p = user_storage_dir(user_id) / "chat_history.json"
-    p.write_text(json.dumps(messages, ensure_ascii=False, indent=2), encoding="utf-8")
+    p.write_text(
+        json.dumps(messages, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
 
 
 def faiss_path_for_user(user_id: str):
@@ -116,9 +109,6 @@ def carregar_docs(pasta="docs"):
     return documentos
 
 
-# -----------------------------
-# FUNÇÃO DO MODELO DEEPSEEK
-# -----------------------------
 def gerar_resposta(prompt_text: str):
     """Chama o modelo deepseek-ai/deepseek-v3.1-terminus via NVIDIA API."""
     completion = client.chat.completions.create(
@@ -141,10 +131,12 @@ def gerar_resposta(prompt_text: str):
     return resposta
 
 
-# -----------------------------
-# INTERFACE STREAMLIT
-# -----------------------------
-st.set_page_config(page_title="DeepSeek Chatbot Multiusuário", page_icon="🤖", layout="centered")
+
+st.set_page_config(
+    page_title="DeepSeek Chatbot Multiusuário",
+    page_icon="🤖",
+    layout="centered"
+)
 st.title("Chat vIAje!")
 
 user_id, access_token = get_current_user()
@@ -154,11 +146,7 @@ if not user_id:
 
 st.markdown(f"**Usuário atual:** `{user_id}`")
 
-## st.markdown(f"**Usuário atual:** `{user_username}`")
 
-# -----------------------------
-# CARREGAR HISTÓRICO E MEMÓRIA
-# -----------------------------
 history_messages = load_user_history(user_id)
 
 if "memory" not in st.session_state or st.session_state.get("user_for_memory") != user_id:
@@ -171,34 +159,46 @@ if "memory" not in st.session_state or st.session_state.get("user_for_memory") !
     st.session_state.memory = mem
     st.session_state.user_for_memory = user_id
 
-# -----------------------------
-# FAISS E EMBEDDINGS POR USUÁRIO
-# -----------------------------
+
 if "vectors" not in st.session_state or st.session_state.get("vectors_user") != user_id:
     emb = NVIDIAEmbeddings()
     st.session_state.embeddings = emb
+
     docs = carregar_docs("./docs")
-    splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=50)
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=400,
+        chunk_overlap=50
+    )
     final_documents = splitter.split_documents(docs)
+
     faiss_file = faiss_path_for_user(user_id)
     if faiss_file.exists():
         try:
-            st.session_state.vectors = FAISS.load_local(str(faiss_file), st.session_state.embeddings, allow_dangerous_deserialization=True)
+            st.session_state.vectors = FAISS.load_local(
+                str(faiss_file),
+                st.session_state.embeddings,
+                allow_dangerous_deserialization=True
+            )
         except Exception as e:
             st.warning(f"Erro ao carregar FAISS local. Recriando: {e}")
-            st.session_state.vectors = FAISS.from_documents(final_documents, st.session_state.embeddings)
+            st.session_state.vectors = FAISS.from_documents(
+                final_documents,
+                st.session_state.embeddings
+            )
             st.session_state.vectors.save_local(str(faiss_file))
     else:
         if final_documents:
-            st.session_state.vectors = FAISS.from_documents(final_documents, st.session_state.embeddings)
+            st.session_state.vectors = FAISS.from_documents(
+                final_documents,
+                st.session_state.embeddings
+            )
             st.session_state.vectors.save_local(str(faiss_file))
         else:
             st.session_state.vectors = None
+
     st.session_state.vectors_user = user_id
 
-# -----------------------------
-# PROMPT PARA RAG
-# -----------------------------
+
 prompt = ChatPromptTemplate.from_template("""
 Responda com base apenas no contexto:
 <context>
@@ -216,9 +216,7 @@ for msg in st.session_state.memory.chat_memory.messages:
         with st.chat_message("assistant"):
             st.markdown(msg.content)
 
-# -----------------------------
-# LOOP PRINCIPAL DE CHAT
-# -----------------------------
+
 if user_input := st.chat_input("Digite sua pergunta..."):
     with st.chat_message("user"):
         st.markdown(user_input)
@@ -227,6 +225,7 @@ if user_input := st.chat_input("Digite sua pergunta..."):
         if st.session_state.vectors:
             retriever = st.session_state.vectors.as_retriever()
             docs = retriever.get_relevant_documents(user_input)
+
             context_text = "\n\n".join([d.page_content for d in docs])
             full_prompt = f"Contexto:\n{context_text}\n\nPergunta: {user_input}"
 
@@ -245,7 +244,10 @@ if user_input := st.chat_input("Digite sua pergunta..."):
 
             with st.chat_message("assistant"):
                 st.markdown(answer)
-                st.caption(f"⏱ Tempo de resposta: {time.process_time() - start:.2f} segundos")
+                st.caption(
+                    f"⏱ Tempo de resposta: "
+                    f"{time.process_time() - start:.2f} segundos"
+                )
 
             with st.expander("🔎 Documentos semelhantes"):
                 for doc in docs:
@@ -267,5 +269,7 @@ if user_input := st.chat_input("Digite sua pergunta..."):
 
             with st.chat_message("assistant"):
                 st.markdown(answer)
-                st.caption(f"⏱ Tempo de resposta: {time.process_time() - start:.2f} segundos")
-
+                st.caption(
+                    f"⏱ Tempo de resposta: "
+                    f"{time.process_time() - start:.2f} segundos"
+                )
