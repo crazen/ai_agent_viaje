@@ -1,17 +1,15 @@
-streamlit
 python-dotenv
 supabase
 openai
 
-
-langchain
-langchain-community
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-text-splitters>=0.3.0
 langchain-nvidia-ai-endpoints
-
 
 pypdf
 faiss-cpu
-
 
 numpy
 tiktoken
